@@ -1,0 +1,32 @@
+actor_model_name_or_path: gpt2
+reward_model_name_or_path: gpt2
+critic_model_name_or_path: gpt2
+ 
+train_datasets:
+  - data_dir: BeaverTails
+    data_split: train
+    seed: 42
+    max_samples: 1000  # Small for quick testing
+ 
+eval_datasets:
+  - data_dir: BeaverTails
+    data_split: test
+    seed: 43
+    max_samples: 100
+ 
+output_dir: ./output_baseline
+per_device_train_batch_size: 4
+per_device_eval_batch_size: 8
+gradient_accumulation_steps: 1
+num_train_epochs: 1
+max_steps: 20  # Just 20 steps for testing
+learning_rate: 5e-6
+weight_decay: 0.01
+warmup_ratio: 0.1
+seed: 42
+logging_steps: 1
+save_steps: 10
+eval_steps: 20
+use_cache: false
+gradient_checkpointing: true
+

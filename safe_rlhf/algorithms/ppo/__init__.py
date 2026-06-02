@@ -15,6 +15,7 @@
 """RLHF with PPO algorithm."""
 
 from safe_rlhf.algorithms.ppo.trainer import PPOTrainer
+from safe_rlhf.algorithms.ppo.trainer_valuerange import PPOValueRangeTrainer
 
 
-__all__ = ['PPOTrainer']
+__all__ = ['PPOTrainer', 'PPOValueRangeTrainer']

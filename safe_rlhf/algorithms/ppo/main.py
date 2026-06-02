@@ -23,6 +23,7 @@ from transformers import SchedulerType
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_tf32_available
 
 from safe_rlhf.algorithms.ppo.trainer import PPOTrainer
+from safe_rlhf.algorithms.ppo.trainer_valuerange import PPOValueRangeTrainer
 from safe_rlhf.configs import get_deepspeed_eval_config, get_deepspeed_train_config
 from safe_rlhf.datasets import parse_dataset
 from safe_rlhf.logger import set_logger_level
@@ -346,6 +347,14 @@ def parse_arguments() -> argparse.Namespace:
         default=None,
         help='Where to store the model.',
     )
+    # Algorithm 1 (Value-Range / Minmax penalty) switch.
+    # When True, use PPOValueRangeTrainer; otherwise the standard KL-penalty PPOTrainer.
+    training_parser.add_argument(
+        '--use_valuerange',
+        type=str2bool,
+        default=False,
+        help='Use Algorithm 1 (Value-Range Minmax penalty) instead of the KL penalty.',
+    )
     logging_parser.add_argument(
         '--log_type',
         type=str,
@@ -453,7 +462,10 @@ def main() -> None:
         bf16=args.bf16,
     )
 
-    trainer = PPOTrainer(args, ds_train_config, ds_eval_config)
+    trainer_cls = PPOValueRangeTrainer if args.use_valuerange else PPOTrainer
+    if args.global_rank == 0:
+        print(f'[main] Using trainer: {trainer_cls.__name__}')
+    trainer = trainer_cls(args, ds_train_config, ds_eval_config)
     trainer.train()
     trainer.save()
 
