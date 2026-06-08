@@ -13,3 +13,6 @@ optree
 matplotlib
 tqdm
 rich
+detoxify
+trl
+peft
