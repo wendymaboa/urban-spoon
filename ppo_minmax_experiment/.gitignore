@@ -1,0 +1,5 @@
+# Training artifacts — regenerated on Colab
+models/
+results/*.csv
+results/*.png
+results/*.out

@@ -15,6 +15,8 @@
 """RLHF with PPO algorithm."""
 
 from safe_rlhf.algorithms.ppo.trainer import PPOTrainer
+from safe_rlhf.algorithms.ppo.trainer_detoxify import PPODetoxifyTrainer
+from safe_rlhf.algorithms.ppo.trainer_minmax import PPOMinmaxTrainer
 
 
-__all__ = ['PPOTrainer']
+__all__ = ['PPOTrainer', 'PPODetoxifyTrainer', 'PPOMinmaxTrainer']

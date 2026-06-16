@@ -262,6 +262,11 @@ class RLTrainer(TrainerBase):  # pylint: disable=too-many-instance-attributes
             * self.args.num_return_sequences
             // self.args.per_device_train_batch_size,
         )
+        if getattr(self.args, 'max_training_steps', None):
+            self.args.total_training_steps = min(
+                self.args.total_training_steps,
+                self.args.max_training_steps,
+            )
 
     def _init_train_engine(
         self,
@@ -531,6 +536,13 @@ class RLTrainer(TrainerBase):  # pylint: disable=too-many-instance-attributes
                             f'(reward {rl_info["train/reward"]:.4f})',
                         )
                         progress_bar.update(1)
+
+                        if (
+                            getattr(self.args, 'max_training_steps', None)
+                            and self.global_step >= self.args.max_training_steps
+                        ):
+                            progress_bar.close()
+                            return
 
                         if self.global_step % self.args.save_interval == 0:
                             self.logger.print(f'Saving checkpoint at step {self.global_step} ...')

@@ -23,6 +23,8 @@ from transformers import SchedulerType
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_tf32_available
 
 from safe_rlhf.algorithms.ppo.trainer import PPOTrainer
+from safe_rlhf.algorithms.ppo.trainer_detoxify import PPODetoxifyTrainer
+from safe_rlhf.algorithms.ppo.trainer_minmax import PPOMinmaxTrainer
 from safe_rlhf.configs import get_deepspeed_eval_config, get_deepspeed_train_config
 from safe_rlhf.datasets import parse_dataset
 from safe_rlhf.logger import set_logger_level
@@ -262,6 +264,42 @@ def parse_arguments() -> argparse.Namespace:
         help='A seed for reproducible training.',
     )
     training_parser.add_argument(
+        '--max_training_steps',
+        type=int,
+        default=None,
+        help='Stop after this many RL update steps (overrides epoch-based schedule).',
+    )
+    training_parser.add_argument(
+        '--use_detoxify_reward',
+        type=str2bool,
+        default=False,
+        help='Use Detoxify verifiable rewards instead of a learned reward model.',
+    )
+    training_parser.add_argument(
+        '--use_minmax',
+        type=str2bool,
+        default=False,
+        help='Use Algorithm 1 Minmax penalty (requires --use_detoxify_reward).',
+    )
+    training_parser.add_argument(
+        '--safety_threshold',
+        type=float,
+        default=-0.3,
+        help='Raw Detoxify reward below this triggers Minmax penalty (toxicity > 0.3).',
+    )
+    training_parser.add_argument(
+        '--penalty_floor',
+        type=float,
+        default=-1.0,
+        help='Engineering floor on r_unsafe to guard early-training instability.',
+    )
+    training_parser.add_argument(
+        '--training_log_csv',
+        type=str,
+        default=None,
+        help='Optional CSV path for per-step training logs (TRL-compatible columns).',
+    )
+    training_parser.add_argument(
         '--fp16',
         type=str2bool,
         default=False,
@@ -410,6 +448,8 @@ def parse_arguments() -> argparse.Namespace:
     args = parser.parse_args()
     if args.local_rank == -1:
         parser.error('`local_rank` not set, please use DeepSpeed launcher to run this script.')
+    if args.use_minmax and not args.use_detoxify_reward:
+        parser.error('--use_minmax requires --use_detoxify_reward True.')
     if args.fp16 and args.bf16:
         parser.error('Cannot use both bf16 and fp16 precision.')
     if args.bf16 and not is_torch_bf16_gpu_available():
@@ -453,7 +493,13 @@ def main() -> None:
         bf16=args.bf16,
     )
 
-    trainer = PPOTrainer(args, ds_train_config, ds_eval_config)
+    trainer_cls = PPOTrainer
+    if args.use_minmax:
+        trainer_cls = PPOMinmaxTrainer
+    elif args.use_detoxify_reward:
+        trainer_cls = PPODetoxifyTrainer
+
+    trainer = trainer_cls(args, ds_train_config, ds_eval_config)
     trainer.train()
     trainer.save()
 
