@@ -20,13 +20,15 @@ Output:
 import argparse
 import csv
 import os
+import sys
 import torch
 from datasets import load_dataset
 from detoxify import Detoxify
 from transformers import AutoTokenizer
-from trl import PPOConfig, PPOTrainer, AutoModelForCausalLMWithValueHead
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT_DIR)
+from trl_compat import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
 
 
 def parse_args():
@@ -61,8 +63,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLMWithValueHead.from_pretrained(args.model)
-    ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(args.model)
+    model = AutoModelForCausalLMWithValueHead.from_pretrained(args.model).to(device)
+    ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(args.model).to(device)
 
     model.v_head.summary.weight.data.zero_()
     model.v_head.summary.bias.data.zero_()
@@ -172,6 +174,9 @@ def main():
                 f"reward={mean_reward:.4f} | "
                 f"kl={kl:.4f}"
             )
+
+    if not log_rows:
+        raise RuntimeError("No training steps completed — check GPU, dataset access, and TRL install.")
 
     log_path = os.path.join(output_dir, log_file)
     with open(log_path, "w", newline="") as f:

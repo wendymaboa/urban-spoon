@@ -14,5 +14,5 @@ matplotlib
 tqdm
 rich
 detoxify
-trl
+trl>=0.11.0,<0.17.0
 peft
