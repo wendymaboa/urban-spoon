@@ -28,7 +28,7 @@ from transformers import AutoTokenizer
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT_DIR)
-from trl_compat import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
+from trl_compat import AutoModelForCausalLMWithValueHead, PPOTrainer, make_ppo_config
 
 
 def parse_args():
@@ -69,7 +69,7 @@ def main():
     model.v_head.summary.weight.data.zero_()
     model.v_head.summary.bias.data.zero_()
 
-    config = PPOConfig(
+    config = make_ppo_config(
         model_name=args.model,
         learning_rate=args.learning_rate,
         batch_size=args.batch_size,

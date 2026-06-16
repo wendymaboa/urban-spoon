@@ -1,8 +1,8 @@
-"""TRL imports compatible across versions (Colab may install TRL 0.27+)."""
+"""TRL imports and version-tolerant PPOConfig factory."""
 
 from __future__ import annotations
 
-import importlib
+import inspect
 
 
 def _import_ppo_symbols():
@@ -19,11 +19,27 @@ def _import_ppo_symbols():
         return PPOConfig, PPOTrainer, AutoModelForCausalLMWithValueHead
     except ImportError as exc:
         raise ImportError(
-            'Could not import TRL PPO classes. Install a compatible version, e.g. '
-            'pip install "trl>=0.11,<0.17" or pip install -r requirements.txt'
+            'Could not import TRL PPO classes. Install a compatible version:\n'
+            '  pip install "transformers>=4.37,<5" "trl==0.11.4"'
         ) from exc
 
 
 PPOConfig, PPOTrainer, AutoModelForCausalLMWithValueHead = _import_ppo_symbols()
 
-__all__ = ['PPOConfig', 'PPOTrainer', 'AutoModelForCausalLMWithValueHead']
+
+def make_ppo_config(**kwargs):
+    """Build PPOConfig, dropping kwargs unsupported by the installed TRL version."""
+    params = inspect.signature(PPOConfig.__init__).parameters
+    filtered = {key: value for key, value in kwargs.items() if key in params}
+    dropped = sorted(set(kwargs) - set(filtered))
+    if dropped:
+        print(f'[trl_compat] PPOConfig ignoring unsupported keys: {dropped}')
+    return PPOConfig(**filtered)
+
+
+__all__ = [
+    'PPOConfig',
+    'PPOTrainer',
+    'AutoModelForCausalLMWithValueHead',
+    'make_ppo_config',
+]
