@@ -12,6 +12,10 @@ from safe_rlhf.rewards.detoxify_reward import compute_reward
 from safe_rlhf.utils import gather_log_probabilities, is_main_process
 
 
+def _scalar(value: float | torch.Tensor) -> float:
+    return value.item() if isinstance(value, torch.Tensor) else float(value)
+
+
 class PPODetoxifyTrainer(PPOTrainer):
     """PPO with Detoxify rewards instead of a learned reward model."""
 
@@ -76,8 +80,8 @@ class PPODetoxifyTrainer(PPOTrainer):
             self._csv_rows.append({
                 'step': self.global_step,
                 'condition': 'baseline',
-                'mean_reward': round(info['train/reward'].item(), 4),
-                'kl_divergence': round(info['train/kl_divergence'].item(), 4),
+                'mean_reward': round(_scalar(info['train/reward']), 4),
+                'kl_divergence': round(_scalar(info['train/kl_divergence']), 4),
                 'v_min': 'N/A',
                 'v_max': 'N/A',
                 'r_unsafe': 'N/A',

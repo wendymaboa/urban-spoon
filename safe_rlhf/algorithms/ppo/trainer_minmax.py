@@ -8,7 +8,7 @@ from typing import Any
 import torch
 import torch.distributed as dist
 
-from safe_rlhf.algorithms.ppo.trainer_detoxify import PPODetoxifyTrainer
+from safe_rlhf.algorithms.ppo.trainer_detoxify import PPODetoxifyTrainer, _scalar
 from safe_rlhf.utils import (
     gather_log_probabilities,
     get_all_reduce_max,
@@ -170,14 +170,14 @@ class PPOMinmaxTrainer(PPODetoxifyTrainer):
             self._csv_rows.append({
                 'step': self.global_step,
                 'condition': 'minmax',
-                'mean_reward': round(reward_with_penalty.item(), 4),
-                'kl_divergence': round(kl_divergence.item(), 4),
+                'mean_reward': round(_scalar(reward_with_penalty), 4),
+                'kl_divergence': round(_scalar(kl_divergence), 4),
                 'v_min': round(self.v_min, 4),
                 'v_max': round(self.v_max, 4),
                 'r_unsafe': round(r_unsafe, 4),
                 'r_unsafe_raw': round(r_unsafe_raw, 4),
                 'floor_active': int(floor_active),
-                'n_unsafe': int(n_unsafe.item()),
+                'n_unsafe': int(_scalar(n_unsafe)),
             })
 
         return info
