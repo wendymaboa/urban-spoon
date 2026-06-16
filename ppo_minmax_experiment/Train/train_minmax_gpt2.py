@@ -23,6 +23,7 @@ from transformers import AutoTokenizer
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT_DIR)
+from Train.generation_utils import generate_batch, get_value_estimates
 from trl_compat import AutoModelForCausalLMWithValueHead, PPOTrainer, make_ppo_config
 
 
@@ -118,8 +119,10 @@ def main():
     def apply_minmax_penalty(raw_rewards, trl_value_estimates):
         nonlocal r_min, r_max, v_min, v_max
 
-        r_min = min(r_min, min(raw_rewards))
-        r_max = max(r_max, max(raw_rewards))
+        batch_r_min = min(raw_rewards)
+        batch_r_max = max(raw_rewards)
+        r_min = min(r_min, batch_r_min)
+        r_max = max(r_max, batch_r_max)
 
         r_unsafe_raw = v_min - v_max
         floor_active = r_unsafe_raw < args.penalty_floor
@@ -133,13 +136,13 @@ def main():
                 penalized.append(torch.tensor(r, dtype=torch.float32))
 
         if trl_value_estimates is not None and trl_value_estimates.numel() > 0:
-            v_min = min(v_min, r_min, trl_value_estimates.min().item())
-            v_max = max(v_max, r_max, trl_value_estimates.max().item())
+            v_min = min(v_min, batch_r_min, trl_value_estimates.min().item())
+            v_max = max(v_max, batch_r_max, trl_value_estimates.max().item())
         else:
-            v_min = min(v_min, r_min)
-            v_max = max(v_max, r_max)
+            v_min = min(v_min, batch_r_min)
+            v_max = max(v_max, batch_r_max)
 
-        return penalized, r_unsafe_raw, floor_active
+        return penalized, r_unsafe_raw, floor_active, batch_r_min, batch_r_max
 
     print(f"\nStarting MINMAX training for {args.steps} steps...")
     print(f"Condition: PPO + Algorithm 1 (Minmax penalty, beta={config.init_kl_coef})\n")
@@ -156,55 +159,29 @@ def main():
         if len(batch_prompts) < args.batch_size:
             break
 
-        query_tensors = [
-            tokenizer(
-                p, return_tensors="pt", padding=False,
-                truncation=True, max_length=128,
-            )["input_ids"].squeeze(0)
-            for p in batch_prompts
-        ]
-
-        valid_queries, response_tensors = [], []
-        for query in query_tensors:
-            if query.numel() == 0:
-                continue
-            response = trainer.generate(
-                query.to(device),
-                max_new_tokens=args.max_new_tokens,
-                do_sample=True,
-                top_k=50,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
-            valid_queries.append(query)
-            response_tensors.append(response.squeeze(0)[len(query):].cpu())
-        query_tensors = valid_queries
-
+        query_tensors, response_tensors, batch_responses = generate_batch(
+            trainer,
+            tokenizer,
+            batch_prompts,
+            device,
+            args.max_new_tokens,
+        )
         if not query_tensors:
             continue
 
-        batch_responses = [
-            tokenizer.decode(r, skip_special_tokens=True)
-            for r in response_tensors
-        ]
         raw_rewards = compute_reward(batch_responses)
+        value_estimates = get_value_estimates(model, query_tensors, response_tensors, device)
+        batch_vpred_min = value_estimates.min().item() if value_estimates is not None else None
+        batch_vpred_max = value_estimates.max().item() if value_estimates is not None else None
 
-        penalized_rewards, r_unsafe_raw, floor_active = apply_minmax_penalty(
+        penalized_rewards, r_unsafe_raw, floor_active, batch_r_min, batch_r_max = apply_minmax_penalty(
             raw_rewards,
-            trl_value_estimates=None,
+            value_estimates,
         )
 
         stats = trainer.step(query_tensors, response_tensors, penalized_rewards)
 
-        vpred_mean = stats.get("val/vpred", None)
-        if vpred_mean is not None:
-            vpred_tensor = torch.tensor([float(vpred_mean)], dtype=torch.float32)
-            v_min = min(v_min, min(raw_rewards), vpred_tensor.min().item())
-            v_max = max(v_max, max(raw_rewards), vpred_tensor.max().item())
-        else:
-            v_min = min(v_min, min(raw_rewards))
-            v_max = max(v_max, max(raw_rewards))
-
+        mean_raw_reward = sum(raw_rewards) / len(raw_rewards)
         mean_reward = sum(r.item() for r in penalized_rewards) / len(penalized_rewards)
         kl = float(stats.get("objective/kl", 0.0))
         n_unsafe = sum(1 for r in raw_rewards if r < args.safety_threshold)
@@ -213,7 +190,12 @@ def main():
             "step": step,
             "condition": condition,
             "mean_reward": round(mean_reward, 4),
+            "mean_raw_reward": round(mean_raw_reward, 4),
             "kl_divergence": round(kl, 4),
+            "batch_r_min": round(batch_r_min, 4),
+            "batch_r_max": round(batch_r_max, 4),
+            "batch_vpred_min": round(batch_vpred_min, 4) if batch_vpred_min is not None else "N/A",
+            "batch_vpred_max": round(batch_vpred_max, 4) if batch_vpred_max is not None else "N/A",
             "v_min": round(v_min, 4),
             "v_max": round(v_max, 4),
             "r_unsafe": round(max(v_min - v_max, args.penalty_floor), 4),
@@ -223,11 +205,16 @@ def main():
         })
 
         if step % 10 == 0:
+            vpred_msg = (
+                f"vpred=[{batch_vpred_min:.4f},{batch_vpred_max:.4f}]"
+                if batch_vpred_min is not None
+                else "vpred=N/A"
+            )
             print(
                 f"Step {step:4d} | "
-                f"reward={mean_reward:.4f} | "
-                f"v_min={v_min:.4f} | v_max={v_max:.4f} | "
-                f"r_unsafe_raw={r_unsafe_raw:.4f} | "
+                f"reward={mean_reward:.4f} raw={mean_raw_reward:.4f} | "
+                f"batch_r=[{batch_r_min:.4f},{batch_r_max:.4f}] {vpred_msg} | "
+                f"cum_v=[{v_min:.4f},{v_max:.4f}] r_unsafe_raw={r_unsafe_raw:.4f} | "
                 f"floor={'YES' if floor_active else 'no ':3s} | "
                 f"kl={kl:.4f} | "
                 f"unsafe={n_unsafe}/{len(raw_rewards)}"

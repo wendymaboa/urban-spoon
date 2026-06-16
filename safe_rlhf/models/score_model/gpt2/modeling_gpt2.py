@@ -19,20 +19,33 @@ import warnings
 from typing import Any
 
 import torch
-from transformers import GPT2Model, GPT2PreTrainedModel, PretrainedConfig, PreTrainedModel
-from transformers.models.gpt2.modeling_gpt2 import (
-    _CONFIG_FOR_DOC,
-    DEPARALLELIZE_DOCSTRING,
-    GPT2_INPUTS_DOCSTRING,
-    GPT2_START_DOCSTRING,
-    PARALLELIZE_DOCSTRING,
-)
+from transformers import GPT2Config, GPT2Model, GPT2PreTrainedModel, PretrainedConfig, PreTrainedModel
+
+try:
+    from transformers.models.gpt2.modeling_gpt2 import (
+        _CONFIG_FOR_DOC,
+        DEPARALLELIZE_DOCSTRING,
+        GPT2_INPUTS_DOCSTRING,
+        GPT2_START_DOCSTRING,
+        PARALLELIZE_DOCSTRING,
+    )
+except ImportError:
+    _CONFIG_FOR_DOC = GPT2Config
+    GPT2_START_DOCSTRING = ''
+    GPT2_INPUTS_DOCSTRING = ''
+    PARALLELIZE_DOCSTRING = ''
+    DEPARALLELIZE_DOCSTRING = ''
+
+try:
+    from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
+except ImportError:
+    assert_device_map = None
+    get_device_map = None
 from transformers.utils.doc import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
     replace_return_docstrings,
 )
-from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
 
 from safe_rlhf.models.score_model import ScoreModelMixin, ScoreModelOutput
 

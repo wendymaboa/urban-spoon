@@ -1,5 +1,5 @@
 torch >= 1.13
-transformers >= 4.37.2, < 5.0.0
+transformers>=4.37.2,<=4.46.3
 datasets
 tokenizers >= 0.13.3, < 0.22.0
 accelerate
